@@ -1,3 +1,2 @@
 # Example programs
-cuda_add_executable(example main.cu
-    OPTIONS ${GENCODE} ${VERBOSE_PTXAS})
+add_executable(example main.cu)
