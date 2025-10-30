@@ -24,6 +24,7 @@
 #pragma once
 
 #include "../hash_map_context.cuh"
+#include "../hash_map_impl.cuh"
 
 /*
  * Kernel: Count occupied slots
@@ -37,18 +38,18 @@ template <typename KeyT, typename ValueT>
 __global__ void count_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
                                     uint32_t* d_count,
                                     uint32_t num_buckets) {
-  // TODO: Implement kernel
-  // Hints (simple version):
-  //   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-  //
-  //   if (tid < num_buckets) {
-  //     uint32_t status = ctx.getStatus()[tid];
-  //     if (status == OCCUPIED) {
-  //       atomicAdd(d_count, 1);
-  //     }
-  //   }
-  //
-  // Better version: Use shared memory reduction within block
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int stride = gridDim.x * blockDim.x;
+
+  for (uint32_t i = tid; i < num_buckets; i += stride) {
+    // check state of slot
+    uint32_t status = ctx.getStatus()[i];
+    
+    // if occupied, increment count
+    if (status == OCCUPIED) {
+      atomicAdd(d_count, 1);
+    }
+  }
 }
 
 /*
@@ -59,23 +60,36 @@ __global__ void count_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
  */
 template <typename KeyT, typename ValueT>
 uint32_t GpuHashMap<KeyT, ValueT>::countTable() {
-  // TODO: Implement kernel launcher
-  // Hints:
-  //   uint32_t* d_count;
-  //   CHECK_CUDA_ERROR(cudaMalloc(&d_count, sizeof(uint32_t)));
-  //   CHECK_CUDA_ERROR(cudaMemset(d_count, 0, sizeof(uint32_t)));
-  //
-  //   const uint32_t block_size = 256;
-  //   const uint32_t num_blocks = (num_buckets_ + block_size - 1) / block_size;
-  //
-  //   count_table_kernel<<<num_blocks, block_size>>>(context_, d_count, num_buckets_);
-  //   CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-  //
-  //   uint32_t h_count = 0;
-  //   CHECK_CUDA_ERROR(cudaMemcpy(&h_count, d_count, sizeof(uint32_t), cudaMemcpyDeviceToHost));
-  //   CHECK_CUDA_ERROR(cudaFree(d_count));
-  //
-  //   return h_count;
+  
+  uint32_t* d_count;
+  CHECK_CUDA_ERROR(cudaMalloc(&d_count, sizeof(uint32_t)));
 
-  return 0;  // Placeholder
+  CHECK_CUDA_ERROR(cudaMemset(d_count, 0, sizeof(uint32_t)));
+
+  const uint32_t block_size = 256;
+  
+  uint32_t grid_size = (num_buckets_ + block_size - 1) / block_size;
+  grid_size = min(grid_size, 2048u); // limitation of max grid size
+
+  // start kernel to count occupied slots
+  count_table_kernel<<<grid_size, block_size>>>(
+      context_, 
+      d_count,  
+      num_buckets_
+  );
+
+  CHECK_CUDA_ERROR(cudaGetLastError());
+  
+  CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+
+  uint32_t h_count = 0;
+
+  CHECK_CUDA_ERROR(cudaMemcpy(&h_count, 
+                              d_count, 
+                              sizeof(uint32_t), 
+                              cudaMemcpyDeviceToHost));
+
+  CHECK_CUDA_ERROR(cudaFree(d_count));
+
+  return h_count;
 }
