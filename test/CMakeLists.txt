@@ -1,0 +1,1 @@
+add_executable(test_count_only test_count_only.cu)

@@ -73,7 +73,7 @@ int main() {
   std::cout << std::endl;
 
   // TODO: Uncomment and implement after finishing the implementation
-  /*
+  
   // 1. Create hash map
   std::cout << "Creating hash map..." << std::endl;
   GpuHashMap<KeyT, ValueT> hash_map(num_buckets, device_idx, 12345, true);
@@ -175,7 +175,7 @@ int main() {
   CHECK_CUDA_ERROR(cudaFree(d_keys));
   CHECK_CUDA_ERROR(cudaFree(d_values));
   CHECK_CUDA_ERROR(cudaFree(d_results));
-  */
+  
 
   std::cout << "TODO: Complete implementation of hash map operations" << std::endl;
   std::cout << "Once implemented, uncomment the code above to run the example." << std::endl;
