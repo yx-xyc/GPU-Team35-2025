@@ -30,9 +30,47 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::countKey(
     uint32_t& count,
     uint32_t bucket) {
 
-  // TODO: Implement warp-cooperative count
-  // Hints:
-  //   - Initialize count = 0
-  //   - Similar logic to search
-  //   - Set count = 1 if key found
+  // Initialize count to 0
+  count = 0;
+
+  // Early exit if this thread doesn't need to count
+  if (!to_count) {
+    return;
+  }
+
+  // Linear probing with warp cooperation
+  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH; probe += WARP_WIDTH) {
+    // Calculate slot index for this lane
+    uint32_t slot = (bucket + probe + laneId) % num_buckets_;
+
+    // Read status and key from this slot
+    uint32_t status = d_status_[slot];
+    KeyT slot_key = d_keys_[slot];
+
+    // Memory fence to ensure reads are complete
+    __threadfence();
+
+    // Check conditions across warp
+    uint32_t empty_mask = __ballot_sync(0xFFFFFFFF, status == EMPTY);
+    uint32_t match_mask = __ballot_sync(0xFFFFFFFF, 
+        status == OCCUPIED && slot_key == key);
+
+    // If any lane found a match, count it
+    if (match_mask != 0) {
+      // Count number of matches (should be 1 for valid hash table)
+      count = __popc(match_mask);
+      return;
+    }
+
+    // If any lane found EMPTY, key doesn't exist
+    if (empty_mask != 0) {
+      // count remains 0
+      return;
+    }
+
+    // Continue probing through TOMBSTONE or wrong keys
+  }
+
+  // Exceeded max probe length, key not found
+  // count remains 0
 }
