@@ -10,6 +10,7 @@ int main() {
   std::cout << "=== Testing Count Function ===" << std::endl;
 
   const uint32_t num_buckets = 100;
+
   int device_count = 0;
 
   cudaError_t err = cudaGetDeviceCount(&device_count);
@@ -27,6 +28,7 @@ int main() {
       printf("无法设置 CUDA 设备：%s（错误码：%d）\n", cudaGetErrorString(err), err);
       return 1;
   }
+
 
   // 创建空哈希表
   GpuHashMap<uint32_t, uint32_t> map(num_buckets, 0, 12345, true);
