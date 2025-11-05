@@ -33,11 +33,28 @@
  *   d_values - device array of values to insert
  *   num_keys - number of keys
  */
+
+
 template <typename KeyT, typename ValueT>
-__global__ void build_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
-                                    const KeyT* d_keys,
-                                    const ValueT* d_values,
-                                    uint32_t num_keys) {
+__global__ void build_table_kernel(
+    GpuHashMapContext<KeyT, ValueT> ctx,
+    const KeyT* d_keys,
+    const ValueT* d_values,
+    uint32_t num_keys) 
+{
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t laneId = threadIdx.x & 0x1F;
+
+    if (tid >= num_keys) return;
+
+    KeyT key = d_keys[tid];
+    ValueT value = d_values[tid];
+    uint32_t bucket = ctx.computeBucket(key);
+
+    // Insert using per-thread insert (for now)
+    ctx.insertKey(true, laneId, key, value, bucket);
+}
+
   // TODO: Implement kernel
   // Hints:
   //   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -56,21 +73,22 @@ __global__ void build_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
   //
   //   // Warp cooperates to insert
   //   ctx.insertKey(has_work, laneId, my_key, my_value, bucket);
-}
+  //}
 
 /*
  * Host wrapper: Launch build kernel
  */
+
 template <typename KeyT, typename ValueT>
-void GpuHashMap<KeyT, ValueT>::buildTable(const KeyT* d_keys,
-                                           const ValueT* d_values,
-                                           uint32_t num_keys) {
-  // TODO: Implement kernel launcher
-  // Hints:
-  //   const uint32_t block_size = 128;
-  //   const uint32_t num_blocks = (num_keys + block_size - 1) / block_size;
-  //
-  //   CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
-  //   build_table_kernel<<<num_blocks, block_size>>>(context_, d_keys, d_values, num_keys);
-  //   CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+void GpuHashMap<KeyT, ValueT>::buildTable(
+    const KeyT* d_keys,
+    const ValueT* d_values,
+    uint32_t num_keys)
+{
+    const uint32_t block_size = 128;
+    const uint32_t num_blocks = (num_keys + block_size - 1) / block_size;
+
+    CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
+    build_table_kernel<<<num_blocks, block_size>>>(context_, d_keys, d_values, num_keys);
+    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
 }

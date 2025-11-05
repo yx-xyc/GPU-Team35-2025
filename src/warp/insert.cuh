@@ -37,19 +37,20 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
 
     // Try to claim EMPTY slot
     uint32_t old_status = atomicCAS(&d_status_[slot], EMPTY, OCCUPIED);
-
-    if (old_status == EMPTY || old_status == TOMBSTONE) {
-      // Claimed slot or reusing tombstone - try to claim tombstone too
-      if (old_status == TOMBSTONE) {
-        old_status = atomicCAS(&d_status_[slot], TOMBSTONE, OCCUPIED);
-      }
-
-      if (old_status == EMPTY || old_status == TOMBSTONE) {
-        // Successfully claimed - write data
+    if (old_status == EMPTY) {
         d_keys_[slot] = key;
         d_values_[slot] = value;
-        return;  // Done
-      }
+        return;
+    }
+
+    // try to reuse tombstone in same pass
+    if (old_status == TOMBSTONE) {
+        uint32_t reused = atomicCAS(&d_status_[slot], TOMBSTONE, OCCUPIED);
+        if (reused == TOMBSTONE) {
+            d_keys_[slot] = key;
+            d_values_[slot] = value;
+            return;
+        }
     }
 
     // Check if key already exists at this slot
