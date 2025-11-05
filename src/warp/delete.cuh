@@ -50,7 +50,7 @@ __device__ __forceinline__ void deleteKey(
 
     if (__all_sync(mask, done)) break;
   }
-
+}
 /*
  * Warp-Cooperative Delete Operation
  *

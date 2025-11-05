@@ -30,11 +30,51 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::searchKey(
     ValueT& result,
     uint32_t bucket) {
 
-  // TODO: Implement warp-cooperative search
-  // Hints:
-  //   - Initialize result = SEARCH_NOT_FOUND
-  //   - Read d_status_[slot], d_keys_[slot], d_values_[slot]
-  //   - Stop at EMPTY slot (key not in table)
-  //   - Continue at TOMBSTONE (key might be further along chain)
-  //   - Use __threadfence() for memory consistency
+  // Initialize result to not found
+  result = SEARCH_NOT_FOUND;
+
+  // Early exit if this thread doesn't need to search
+  if (!to_search) {
+    return;
+  }
+
+  // Linear probing with warp cooperation
+  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH; probe += WARP_WIDTH) {
+    // Calculate slot index for this lane
+    uint32_t slot = (bucket + probe + laneId) % num_buckets_;
+
+    // Read status, key, and value from this slot
+    uint32_t status = d_status_[slot];
+    KeyT slot_key = d_keys_[slot];
+    ValueT slot_value = d_values_[slot];
+
+    // Memory fence to ensure reads are complete
+    __threadfence();
+
+    // Check conditions across warp
+    uint32_t empty_mask = __ballot_sync(0xFFFFFFFF, status == EMPTY);
+    uint32_t match_mask = __ballot_sync(0xFFFFFFFF,
+        status == OCCUPIED && slot_key == key);
+
+    // If any lane found a match, retrieve the value
+    if (match_mask != 0) {
+      // Find which lane has the match and broadcast the value
+      // If this lane has the match, store the value
+      if (status == OCCUPIED && slot_key == key) {
+        result = slot_value;
+      }
+      return;
+    }
+
+    // If any lane found EMPTY, key doesn't exist
+    if (empty_mask != 0) {
+      // result remains SEARCH_NOT_FOUND
+      return;
+    }
+
+    // Continue probing through TOMBSTONE or wrong keys
+  }
+
+  // Exceeded max probe length, key not found
+  // result remains SEARCH_NOT_FOUND
 }
