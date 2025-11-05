@@ -54,22 +54,142 @@ __global__ void search_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
 }
 
 /*
- * Host wrapper: Launch search kernel
+ * ONE-WARP-PER-KEY Kernel: Each warp searches one key cooperatively
+ *
+ * All 32 threads in a warp work together to search for ONE key.
+ * They check 32 slots in parallel per iteration.
+ *
+ * ADVANTAGES:
+ *   - 32x parallelism per key
+ *   - Faster for hard-to-find keys (high load factor)
+ *
+ * USAGE: Best for small batches (< threshold)
+ */
+template <typename KeyT, typename ValueT>
+__global__ void search_table_one_warp_per_key_kernel(
+    GpuHashMapContext<KeyT, ValueT> ctx,
+    const KeyT* d_queries,
+    ValueT* d_results,
+    uint32_t num_queries) {
+
+  uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+  uint32_t laneId = threadIdx.x & 0x1F;
+
+  // Calculate which warp this thread belongs to
+  uint32_t warpId = tid >> 5;  // tid / 32
+
+  // Early exit: entire warp exits if beyond num_queries
+  if (warpId >= num_queries) return;
+
+  // ALL 32 threads in this warp work on the SAME query
+  KeyT shared_key = d_queries[warpId];
+  ValueT result = SEARCH_NOT_FOUND;
+
+  // Compute bucket (all threads compute same bucket for same key)
+  uint32_t bucket = ctx.computeBucket(shared_key);
+
+  // Get active mask
+  unsigned mask = __activemask();
+  bool done = false;
+
+  // Warp-cooperative search: check 32 slots per iteration
+  for (uint32_t probe = 0; probe < GpuHashMapContext<KeyT, ValueT>::MAX_PROBE_LENGTH && __any_sync(mask, !done); probe += 32) {
+
+    if (!done) {
+      // Each thread checks a DIFFERENT slot for the SAME key
+      uint32_t slot = (bucket + probe + laneId) % ctx.getNumBuckets();
+
+      // Read slot data
+      uint32_t status = ctx.getStatus()[slot];
+      KeyT slot_key = ctx.getKeys()[slot];
+      ValueT slot_value = ctx.getValues()[slot];
+
+      // Memory fence
+      __threadfence();
+
+      // Check if this lane found the key
+      if (status == OCCUPIED && slot_key == shared_key) {
+        result = slot_value;
+        done = true;
+      }
+      // Check if this lane found EMPTY (key doesn't exist)
+      else if (status == EMPTY) {
+        done = true;
+      }
+    }
+
+    // Check if any thread found result (success or empty)
+    if (__any_sync(mask, done)) {
+      break;
+    }
+  }
+
+  // Broadcast result across warp using shuffle
+  // Find the lane that has the actual result (if any)
+  uint32_t found_mask = __ballot_sync(mask, result != SEARCH_NOT_FOUND);
+
+  if (found_mask != 0) {
+    // Get the lane ID that found the result
+    int src_lane = __ffs(found_mask) - 1;  // Find first set bit (0-indexed)
+    // Broadcast result from that lane to all lanes
+    result = __shfl_sync(mask, result, src_lane);
+  }
+
+  // Only lane 0 writes the result (avoid 32 threads writing same value)
+  if (laneId == 0) {
+    d_results[warpId] = result;
+  }
+}
+
+/*
+ * Host wrapper: Launch search kernel with hybrid strategy
+ *
+ * Automatically selects between two approaches based on batch size:
+ *   - Small batches (< threshold): One-warp-per-key (32x parallelism per key)
+ *   - Large batches (>= threshold): One-thread-per-key (higher throughput)
  */
 template <typename KeyT, typename ValueT>
 void GpuHashMap<KeyT, ValueT>::searchTable(const KeyT* d_queries,
                                             ValueT* d_results,
                                             uint32_t num_queries) {
-  const uint32_t block_size = 128;
-  const uint32_t num_blocks = (num_queries + block_size - 1) / block_size;
-
   CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
 
-  search_table_kernel<<<num_blocks, block_size>>>(
-      context_,
-      d_queries,
-      d_results,
-      num_queries);
+  const uint32_t block_size = 128;
+
+  // Hybrid strategy: choose kernel based on batch size
+  if (num_queries < search_warp_threshold_) {
+    // Small batch: Use one-warp-per-key (32x parallelism per key)
+    // Need num_queries warps, each block has block_size/32 warps
+    const uint32_t warps_per_block = block_size / 32;
+    const uint32_t num_blocks = (num_queries + warps_per_block - 1) / warps_per_block;
+
+    if (verbose_) {
+      std::cout << "[GpuHashMap] Search: " << num_queries
+                << " queries, using one-warp-per-key kernel (threshold: "
+                << search_warp_threshold_ << ")" << std::endl;
+    }
+
+    search_table_one_warp_per_key_kernel<<<num_blocks, block_size>>>(
+        context_,
+        d_queries,
+        d_results,
+        num_queries);
+  } else {
+    // Large batch: Use one-thread-per-key (higher throughput)
+    const uint32_t num_blocks = (num_queries + block_size - 1) / block_size;
+
+    if (verbose_) {
+      std::cout << "[GpuHashMap] Search: " << num_queries
+                << " queries, using one-thread-per-key kernel (threshold: "
+                << search_warp_threshold_ << ")" << std::endl;
+    }
+
+    search_table_kernel<<<num_blocks, block_size>>>(
+        context_,
+        d_queries,
+        d_results,
+        num_queries);
+  }
 
   CHECK_CUDA_ERROR(cudaGetLastError());
   CHECK_CUDA_ERROR(cudaDeviceSynchronize());

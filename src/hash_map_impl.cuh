@@ -32,6 +32,7 @@ class GpuHashMap {
   uint32_t device_idx_;     // GPU device index
   int64_t seed_;            // Random seed for hash function
   bool verbose_;            // Print debug info
+  uint32_t search_warp_threshold_;  // Threshold for hybrid search (queries < threshold use one-warp-per-key)
 
   // Hash function parameters
   uint32_t hash_x_;
@@ -62,15 +63,18 @@ class GpuHashMap {
    *   device_idx - GPU device to use (default 0)
    *   seed - random seed for hash function (default 0)
    *   verbose - print debug information (default false)
+   *   search_warp_threshold - queries below this use one-warp-per-key, above use one-thread-per-key (default 5000)
    */
   GpuHashMap(uint32_t num_buckets,
              uint32_t device_idx = 0,
              int64_t seed = 0,
-             bool verbose = false)
+             bool verbose = false,
+             uint32_t search_warp_threshold = 5000)
       : num_buckets_(num_buckets),
         device_idx_(device_idx),
         seed_(seed),
         verbose_(verbose),
+        search_warp_threshold_(search_warp_threshold),
         d_keys_(nullptr),
         d_values_(nullptr),
         d_status_(nullptr) {
@@ -127,6 +131,7 @@ class GpuHashMap {
     ss << "  Num buckets: " << num_buckets_ << std::endl;
     ss << "  Device: " << device_idx_ << std::endl;
     ss << "  Hash parameters: (" << hash_x_ << ", " << hash_y_ << ")" << std::endl;
+    ss << "  Search warp threshold: " << search_warp_threshold_ << std::endl;
     ss << "  Memory: " << (sizeof(KeyT) + sizeof(ValueT) + sizeof(uint32_t)) * num_buckets_ / (1024.0 * 1024.0)
        << " MB" << std::endl;
     return ss.str();
