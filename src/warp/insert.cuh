@@ -32,7 +32,7 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
   if (!to_insert) return;  // Simple: each thread works independently for now
 
   // Linear probing
-  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH; probe++) {
+  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH; probe ++) {
     uint32_t slot = (bucket + probe) % num_buckets_;
 
     // Try to claim EMPTY slot
