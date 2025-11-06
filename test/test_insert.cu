@@ -1,12 +1,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
-#include "../src/hash_map_context.cuh"
-#include "../src/hash_map_impl.cuh"
-#include "../src/kernels/build_kernel.cuh"
-#include "../src/warp/insert.cuh"
+#include "gpu_hash_map.cuh"
 #include "../src/kernels/dump_kernels.cuh"
-
-#define EMPTY_KEY -1
 
 // TEST RESULTS !!!:
 //  ./test_insert 
@@ -69,10 +64,10 @@ void test_basic_insert() {
     cudaFree(d_out_status);
 }
 
-// int main() {
-//     test_basic_insert();
-//     // test_collision();
-//     // test_duplicate_update();
-//     // test_near_full_table();
-//     return 0;
-// }
+int main() {
+    test_basic_insert();
+    // test_collision();
+    // test_duplicate_update();
+    // test_near_full_table();
+    return 0;
+}
