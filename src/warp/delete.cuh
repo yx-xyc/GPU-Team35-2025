@@ -14,6 +14,9 @@
 #ifndef TOMBSTONE
 #define TOMBSTONE 2u
 #endif
+#ifndef PENDING
+#define PENDING 3u
+#endif
 
 // 每个 lane 独立完成的线性探测删除（linear probing + tombstone）
 template <typename KeyT, typename ValueT>

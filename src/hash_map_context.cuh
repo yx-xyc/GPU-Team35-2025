@@ -14,7 +14,8 @@
 enum SlotStatus : uint32_t {
   EMPTY = 0,      // Slot is empty
   OCCUPIED = 1,   // Slot contains valid key-value pair
-  TOMBSTONE = 2   // Slot was deleted (for open addressing)
+  TOMBSTONE = 2,  // Slot was deleted (for open addressing)
+  PENDING = 3     // Slot is being written (key not ready yet)
 };
 
 /*
