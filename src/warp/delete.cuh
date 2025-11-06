@@ -5,11 +5,19 @@
 #define WARP_WIDTH 32
 #endif
 
+
 #ifndef TOMBSTONE
 #define TOMBSTONE 1u
+=======
+#ifndef EMPTY
+#define EMPTY 0u
+
 #endif
 #ifndef OCCUPIED
-#define OCCUPIED 2u
+#define OCCUPIED 1u
+#endif
+#ifndef TOMBSTONE
+#define TOMBSTONE 2u
 #endif
 
 template <typename KeyT, typename ValueT>

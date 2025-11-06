@@ -45,14 +45,19 @@ __global__ void build_table_kernel(
     uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t laneId = threadIdx.x & 0x1F;
 
-    if (tid >= num_keys) return;
+    // Early exit for warps beyond data (warp-level exit)
+    if ((tid - laneId) >= num_keys) return;
 
-    KeyT key = d_keys[tid];
-    ValueT value = d_values[tid];
+    // Each thread checks if it has real work
+    bool has_work = (tid < num_keys);
+    KeyT key = has_work ? d_keys[tid] : KeyT();
+    ValueT value = has_work ? d_values[tid] : ValueT();
+
+    // Compute bucket (safe even if has_work=false)
     uint32_t bucket = ctx.computeBucket(key);
 
-    // Insert using per-thread insert (for now)
-    ctx.insertKey(true, laneId, key, value, bucket);
+    // Warp cooperates - threads with has_work=false participate but don't insert
+    ctx.insertKey(has_work, laneId, key, value, bucket);
 }
 
   // TODO: Implement kernel

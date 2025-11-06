@@ -32,7 +32,7 @@ option(HASHMAP_GENCODE_SM80 "GENCODE_SM80" ON)  # For A100 (Ampere)
 Or use `ccmake` for interactive configuration:
 ```bash
 mkdir build && cd build
-ccmake ..  # Toggle architecture options
+cmake ..  # Toggle architecture options
 ```
 
 ### Build
