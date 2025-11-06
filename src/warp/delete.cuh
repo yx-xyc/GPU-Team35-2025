@@ -1,3 +1,24 @@
+/*
+ * Warp-Cooperative Search Operation
+ *
+ * ALGORITHM:
+ *   1. Use __activemask to get active threads
+ *   2. For each probe distance (linear probing):
+ *      - Each lane reads current slot = (bucket + probe + laneId) % num_buckets
+ *      - Check status:
+ *        * EMPTY: key doesn't exist, mark done
+ *        * OCCUPIED: compare key, if match found return value and mark done
+ *        * TOMBSTONE: continue probing
+ *      - Use __any_sync/__all_sync to coordinate exit
+ *      - Exit when all lanes done or MAX_PROBE_LENGTH reached
+ *
+ * IMPORTANT: Uses done-flag pattern instead of early return to maintain warp synchronization
+ *
+ * REFERENCES:
+ *   - SlabHash/src/concurrent_map/warp/search.cuh
+ */
+
+
 #pragma once
 #include "../hash_map_context.cuh"
 
