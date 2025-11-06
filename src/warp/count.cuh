@@ -41,7 +41,7 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::countKey(
 
   // Linear probing with warp cooperation
   for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH && __any_sync(mask, !done); 
-       probe += WARP_WIDTH) {
+       probe ++) {
 
     // Only active threads that aren't done do work
     if (!done) {

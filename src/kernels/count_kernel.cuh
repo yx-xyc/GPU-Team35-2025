@@ -46,7 +46,7 @@ __global__ void count_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
     uint32_t status = ctx.getStatus()[i];
     
     // if occupied, increment count
-    if (status == OCCUPIED) {
+    if (status == 1) { // OCCUPIED
       atomicAdd(d_count, 1);
     }
   }
