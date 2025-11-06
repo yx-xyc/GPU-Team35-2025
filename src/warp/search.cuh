@@ -2,20 +2,20 @@
  * Warp-Cooperative Search Operation
  *
  * ALGORITHM:
- *   1. Use __ballot_sync to find which lanes want to search
+ *   1. Use __activemask to get active threads
  *   2. For each probe distance (linear probing):
- *      - Each lane reads current slot = (bucket + probe) % num_buckets
+ *      - Each lane reads current slot = (bucket + probe + laneId) % num_buckets
  *      - Check status:
- *        * EMPTY: key doesn't exist, stop searching
- *        * OCCUPIED: compare key, if match found return value
+ *        * EMPTY: key doesn't exist, mark done
+ *        * OCCUPIED: compare key, if match found return value and mark done
  *        * TOMBSTONE: continue probing
- *      - Use __ballot_sync to find which lanes finished
+ *      - Use __any_sync/__all_sync to coordinate exit
  *      - Exit when all lanes done or MAX_PROBE_LENGTH reached
+ *
+ * IMPORTANT: Uses done-flag pattern instead of early return to maintain warp synchronization
  *
  * REFERENCES:
  *   - SlabHash/src/concurrent_map/warp/search.cuh
- *
- * TODO: Implement warp-cooperative search with linear probing
  */
 
 #pragma once
@@ -30,11 +30,50 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::searchKey(
     ValueT& result,
     uint32_t bucket) {
 
-  // TODO: Implement warp-cooperative search
-  // Hints:
-  //   - Initialize result = SEARCH_NOT_FOUND
-  //   - Read d_status_[slot], d_keys_[slot], d_values_[slot]
-  //   - Stop at EMPTY slot (key not in table)
-  //   - Continue at TOMBSTONE (key might be further along chain)
-  //   - Use __threadfence() for memory consistency
+  // Initialize result to not found
+  result = SEARCH_NOT_FOUND;
+
+  // Get active thread mask
+  unsigned mask = __activemask();
+
+  // Threads that don't need to search are immediately done
+  bool done = !to_search;
+
+  // Linear probing with warp cooperation
+  // Continue until all threads in warp are done OR we hit max probe length
+  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH && __any_sync(mask, !done); probe += WARP_WIDTH) {
+
+    // Only active threads that aren't done do work
+    if (!done) {
+      // Calculate slot index for this lane
+      uint32_t slot = (bucket + probe + laneId) % num_buckets_;
+
+      // Read status, key, and value from this slot
+      uint32_t status = d_status_[slot];
+      KeyT slot_key = d_keys_[slot];
+      ValueT slot_value = d_values_[slot];
+
+      // Memory fence to ensure reads are complete
+      __threadfence();
+
+      // If we found a match, retrieve the value
+      if (status == OCCUPIED && slot_key == key) {
+        result = slot_value;
+        done = true;
+      }
+      // If we found an EMPTY slot, key doesn't exist
+      else if (status == EMPTY) {
+        // result remains SEARCH_NOT_FOUND
+        done = true;
+      }
+      // Otherwise continue probing (TOMBSTONE or wrong key)
+    }
+
+    // Early exit if all threads are done
+    if (__all_sync(mask, done)) {
+      break;
+    }
+  }
+
+  // If loop exits without finding, result remains SEARCH_NOT_FOUND
 }

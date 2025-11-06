@@ -13,22 +13,6 @@ This project implements a GPU hash map library with the following goals:
 
 Inspired by the SlabHash architecture (Ashkiani et al., IPDPS'18), this implementation starts with a simpler fixed-size design suitable for learning and prototyping, with a clear path to more advanced features.
 
-## Features
-
-### Current Implementation
-- ✅ **Core Operations**: Insert, Search, Delete, Count
-- ✅ **Bulk Operations**: Batch insert, search, and delete
-- ✅ **Concurrent Operations**: Mixed operation batches
-- ✅ **Iterator Support**: Traverse all key-value pairs
-- ✅ **Warp-Cooperative Design**: Efficient GPU utilization
-- ✅ **Generic Templates**: Support for custom key/value types
-
-### Planned Features (See TODO.md)
-- 🔄 Dynamic memory allocation (SlabAlloc integration)
-- 🔄 Chaining for collision resolution
-- 🔄 Performance benchmarking framework
-- 🔄 Advanced hash functions
-
 ## Build Instructions
 
 ### Prerequisites
@@ -152,33 +136,6 @@ Device-side class for use in kernels (shallow-copied).
 - `__device__ void insertKey(bool, uint32_t laneId, KeyT, ValueT, uint32_t bucket)` - Insert
 - `__device__ void searchKey(bool, uint32_t laneId, KeyT, ValueT&, uint32_t bucket)` - Search
 - `__device__ void deleteKey(bool, uint32_t laneId, KeyT, uint32_t bucket)` - Delete
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│     GpuHashMap (Host)               │
-│  - Owns GPU memory                  │
-│  - Manages lifecycle                │
-│  - Launches kernels                 │
-└──────────┬──────────────────────────┘
-           │ Shallow copy
-           ▼
-┌─────────────────────────────────────┐
-│  GpuHashMapContext (Device)         │
-│  - No memory ownership              │
-│  - Used in kernels                  │
-│  - Warp-cooperative ops             │
-└──────────┬──────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────┐
-│    Warp (32 threads)                │
-│  - Cooperative operations           │
-│  - Linear probing                   │
-│  - Ballot/shuffle intrinsics        │
-└─────────────────────────────────────┘
-```
 
 ## Testing
 

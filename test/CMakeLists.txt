@@ -1,1 +1,2 @@
 add_executable(test_count_only test_count_only.cu)
+add_executable(test_hybrid_search test_hybrid_search.cu)

@@ -106,9 +106,9 @@ __global__ void delete_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
 /*
  * Host wrapper: Launch delete kernel
  */
-template <typename KeyT, typename ValueT>
-void GpuHashMap<KeyT, ValueT>::deleteTable(const KeyT* d_keys, uint32_t num_keys) {
-  // TODO: Implement kernel launcher
-  // Similar to buildTable but launches delete_table_kernel
-}
+// template <typename KeyT, typename ValueT>
+// void GpuHashMap<KeyT, ValueT>::deleteTable(const KeyT* d_keys, uint32_t num_keys) {
+//   // TODO: Implement kernel launcher
+//   // Similar to buildTable but launches delete_table_kernel
+// }
 
