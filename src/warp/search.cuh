@@ -39,14 +39,14 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::searchKey(
   // Threads that don't need to search are immediately done
   bool done = !to_search;
 
-  // Linear probing with warp cooperation
+  // Linear probing - each thread probes its own sequence
   // Continue until all threads in warp are done OR we hit max probe length
-  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH && __any_sync(mask, !done); probe += WARP_WIDTH) {
+  for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH && __any_sync(mask, !done); probe++) {
 
     // Only active threads that aren't done do work
     if (!done) {
-      // Calculate slot index for this lane
-      uint32_t slot = (bucket + probe + laneId) % num_buckets_;
+      // Each thread probes sequentially from its own bucket
+      uint32_t slot = (bucket + probe) % num_buckets_;
 
       // Read status, key, and value from this slot
       uint32_t status = d_status_[slot];
