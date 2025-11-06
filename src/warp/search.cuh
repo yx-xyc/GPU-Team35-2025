@@ -66,7 +66,7 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::searchKey(
         // result remains SEARCH_NOT_FOUND
         done = true;
       }
-      // Otherwise continue probing (TOMBSTONE or wrong key)
+      // Otherwise continue probing (TOMBSTONE, PENDING, or wrong key)
     }
 
     // Early exit if all threads are done
