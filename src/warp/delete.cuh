@@ -8,11 +8,11 @@
 #ifndef EMPTY
 #define EMPTY 0u
 #endif
-#ifndef TOMBSTONE
-#define TOMBSTONE 1u
-#endif
 #ifndef OCCUPIED
-#define OCCUPIED 2u
+#define OCCUPIED 1u
+#endif
+#ifndef TOMBSTONE
+#define TOMBSTONE 2u
 #endif
 
 // 每个 lane 独立完成的线性探测删除（linear probing + tombstone）
