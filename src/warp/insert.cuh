@@ -29,10 +29,7 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
     const ValueT& value,
     uint32_t bucket) {
 
-  if (!to_insert) return;  // Simple: each thread works independently for now
-
-  // Debug: track keys 1-5 only
-  bool debug = (key >= 1 && key <= 5);
+  if (!to_insert) return;
 
   // Linear probing with three-state protocol
   for (uint32_t probe = 0; probe < MAX_PROBE_LENGTH; probe++) {
@@ -45,27 +42,46 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
     if (slot_status == OCCUPIED) {
       __threadfence();  // Ensure key write is visible
       KeyT slot_key = d_keys_[slot];
-      if (debug) printf("[INSERT] tid=%d key=%u CHECK OCCUPIED slot=%u: slot_key=%u, match=%d\n",
-                        threadIdx.x + blockIdx.x * blockDim.x, key, slot, slot_key, (slot_key == key));
       if (slot_key == key) {
         // Duplicate found - update value
-        if (debug) printf("[INSERT] tid=%d key=%u DUPLICATE at slot=%u, updating\n",
-                          threadIdx.x + blockIdx.x * blockDim.x, key, slot);
         d_values_[slot] = value;
         return;
       }
       // Different key - collision, continue probing
-      if (debug) printf("[INSERT] tid=%d key=%u COLLISION at slot=%u (has key=%u)\n",
-                        threadIdx.x + blockIdx.x * blockDim.x, key, slot, slot_key);
       continue;
     }
 
-    // If PENDING, another thread is writing - retry this slot
+    // If PENDING, another thread is writing - wait briefly, then check for duplicate
     if (slot_status == PENDING) {
-      if (debug) printf("[INSERT] tid=%d key=%u PENDING at slot=%u, retrying\n",
-                        threadIdx.x + blockIdx.x * blockDim.x, key, slot);
-      probe--;  // Retry same slot in next iteration
-      continue;
+      // Bounded busy-wait for PENDING to resolve to OCCUPIED
+      const int MAX_WAIT_ITERATIONS = 1000;
+      int wait_iter = 0;
+      uint32_t current_status = PENDING;
+      while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
+        current_status = d_status_[slot];
+        wait_iter++;
+      }
+
+      // After wait, check what happened
+      if (current_status == OCCUPIED) {
+        // PENDING resolved to OCCUPIED - check for duplicate
+        __threadfence();
+        KeyT slot_key = d_keys_[slot];
+        if (slot_key == key) {
+          // Duplicate found
+          d_values_[slot] = value;
+          return;
+        }
+        // Different key - collision, continue probing
+        continue;
+      } else if (current_status == PENDING) {
+        // Timeout - still PENDING, skip to avoid infinite loop
+        continue;
+      } else {
+        // Became something else (EMPTY/TOMBSTONE) - recheck this slot
+        probe--;  // Recheck this slot
+        continue;
+      }
     }
 
     // Try to claim EMPTY slot with PENDING state
@@ -73,17 +89,19 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       uint32_t old = atomicCAS(&d_status_[slot], EMPTY, PENDING);
       if (old == EMPTY) {
         // Successfully claimed - write key/value, then mark OCCUPIED
-        if (debug) printf("[INSERT] tid=%d key=%u CLAIMED EMPTY slot=%u (bucket=%u probe=%u)\n",
-                          threadIdx.x + blockIdx.x * blockDim.x, key, slot, bucket, probe);
         d_keys_[slot] = key;
         d_values_[slot] = value;
         __threadfence();  // Ensure writes are visible
         d_status_[slot] = OCCUPIED;  // Mark as ready
-        if (debug) printf("[INSERT] tid=%d key=%u COMPLETED at slot=%u\n",
-                          threadIdx.x + blockIdx.x * blockDim.x, key, slot);
         return;
       }
-      // CAS failed - retry this slot
+      // CAS failed - check what the slot became
+      if (old == PENDING) {
+        // Another thread just claimed it - need to wait and check for duplicate
+        probe--;  // Recheck this slot (will hit PENDING handler above)
+        continue;
+      }
+      // Became something else (OCCUPIED/TOMBSTONE) - recheck
       probe--;
       continue;
     }
@@ -93,15 +111,19 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       uint32_t old = atomicCAS(&d_status_[slot], TOMBSTONE, PENDING);
       if (old == TOMBSTONE) {
         // Successfully claimed tombstone - write key/value, then mark OCCUPIED
-        if (debug) printf("[INSERT] tid=%d key=%u CLAIMED TOMBSTONE slot=%u\n",
-                          threadIdx.x + blockIdx.x * blockDim.x, key, slot);
         d_keys_[slot] = key;
         d_values_[slot] = value;
         __threadfence();  // Ensure writes are visible
         d_status_[slot] = OCCUPIED;  // Mark as ready
         return;
       }
-      // CAS failed - retry this slot
+      // CAS failed - check what happened
+      if (old == PENDING) {
+        // Another thread just claimed it - wait and check for duplicate
+        probe--;  // Recheck this slot
+        continue;
+      }
+      // Became something else - recheck
       probe--;
       continue;
     }
@@ -110,6 +132,4 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
   }
 
   // Failed to insert (table full or too many collisions)
-  if (debug) printf("[INSERT] tid=%d key=%u FAILED after MAX_PROBE_LENGTH\n",
-                    threadIdx.x + blockIdx.x * blockDim.x, key);
 }
