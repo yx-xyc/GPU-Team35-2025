@@ -8,7 +8,7 @@
 
 #ifndef TOMBSTONE
 #define TOMBSTONE 1u
-=======
+
 #ifndef EMPTY
 #define EMPTY 0u
 
