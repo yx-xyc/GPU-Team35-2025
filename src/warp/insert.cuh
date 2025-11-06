@@ -54,10 +54,11 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
     // If PENDING, another thread is writing - wait briefly, then check for duplicate
     if (slot_status == PENDING) {
       // Bounded busy-wait for PENDING to resolve to OCCUPIED
-      const int MAX_WAIT_ITERATIONS = 1000;
+      const int MAX_WAIT_ITERATIONS = 100000;
       int wait_iter = 0;
       uint32_t current_status = PENDING;
       while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
+        __threadfence();  // Force memory visibility
         current_status = d_status_[slot];
         wait_iter++;
       }
@@ -76,6 +77,9 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
         continue;
       } else if (current_status == PENDING) {
         // Timeout - still PENDING, skip to avoid infinite loop
+        // WARNING: This may allow duplicate insertions!
+        printf("[WARNING] PENDING timeout at slot=%u after %d iterations - potential duplicate insertion! (tid=%d, key=%u)\n",
+               slot, MAX_WAIT_ITERATIONS, threadIdx.x + blockIdx.x * blockDim.x, key);
         continue;
       } else {
         // Became something else (EMPTY/TOMBSTONE) - recheck this slot
@@ -84,10 +88,10 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       }
     }
 
-    // Try to claim EMPTY slot with PENDING state
-    if (slot_status == EMPTY) {
-      uint32_t old = atomicCAS(&d_status_[slot], EMPTY, PENDING);
-      if (old == EMPTY) {
+    // Try to claim EMPTY or TOMBSTONE slot with PENDING state
+    if (slot_status == EMPTY || slot_status == TOMBSTONE) {
+      uint32_t old = atomicCAS(&d_status_[slot], slot_status, PENDING);
+      if (old == slot_status) {
         // Successfully claimed - write key/value, then mark OCCUPIED
         d_keys_[slot] = key;
         d_values_[slot] = value;
@@ -99,28 +103,6 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       if (old == PENDING) {
         // Another thread just claimed it - need to wait and check for duplicate
         probe--;  // Recheck this slot (will hit PENDING handler above)
-        continue;
-      }
-      // Became something else (OCCUPIED/TOMBSTONE) - recheck
-      probe--;
-      continue;
-    }
-
-    // Try to reuse TOMBSTONE slot with PENDING state
-    if (slot_status == TOMBSTONE) {
-      uint32_t old = atomicCAS(&d_status_[slot], TOMBSTONE, PENDING);
-      if (old == TOMBSTONE) {
-        // Successfully claimed tombstone - write key/value, then mark OCCUPIED
-        d_keys_[slot] = key;
-        d_values_[slot] = value;
-        __threadfence();  // Ensure writes are visible
-        d_status_[slot] = OCCUPIED;  // Mark as ready
-        return;
-      }
-      // CAS failed - check what happened
-      if (old == PENDING) {
-        // Another thread just claimed it - wait and check for duplicate
-        probe--;  // Recheck this slot
         continue;
       }
       // Became something else - recheck
