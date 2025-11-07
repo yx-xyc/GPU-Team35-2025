@@ -7,15 +7,47 @@
  * - non-existent keys 
  * - count consistency 
  * - search semantics
+ * - duplicates
+ * - concurrent deletion
  */
 
 #include "../include/gpu_hash_map.cuh"
-#include "test_utils.cuh"
+#include "../test/test_utils.cuh"
 #include <vector>
 #include <iostream>
 #include <algorithm>
 #include <cstdint>
+#include <cuda_runtime.h>
 
+// -----------------------------------------------------------
+// Utility functions (used by delete tests)
+// -----------------------------------------------------------
+template <typename T>
+T* allocateDeviceArray(uint32_t count) {
+    T* ptr = nullptr;
+    cudaMalloc(&ptr, sizeof(T) * count);
+    return ptr;
+}
+
+template <typename T>
+void freeDeviceArray(T* ptr) {
+    cudaFree(ptr);
+}
+
+template <typename T>
+void copyToDevice(T* d_dst, const T* h_src, uint32_t count) {
+    cudaMemcpy(d_dst, h_src, sizeof(T) * count, cudaMemcpyHostToDevice);
+}
+
+template <typename T>
+void copyToHost(std::vector<T>& h_dst, const T* d_src, uint32_t count) {
+    h_dst.resize(count);
+    cudaMemcpy(h_dst.data(), d_src, sizeof(T) * count, cudaMemcpyDeviceToHost);
+}
+
+// ===============================================================
+// === Base Delete Test Suite (original) =========================
+// ===============================================================
 template <typename KeyT=uint32_t, typename ValueT=uint32_t>
 bool run_delete_suite(uint32_t num_buckets,
                       uint32_t num_keys,
@@ -107,16 +139,155 @@ bool run_delete_suite(uint32_t num_buckets,
   return ok;
 }
 
+// ===============================================================
+// === NEW TESTS FOR DELETE OPERATION ============================
+// ===============================================================
+template <typename KeyT=uint32_t, typename ValueT=uint32_t>
+bool run_delete_edge_cases(uint32_t num_buckets,
+                           uint32_t device_idx = 0,
+                           uint32_t seed = 22222,
+                           bool verbose = false) {
+  std::cout << "\n=== Running Boundary Delete Test ===" << std::endl;
+
+  std::vector<KeyT> keys = {1, 2, 3, 4, 5};
+  std::vector<ValueT> vals = {10, 20, 30, 40, 50};
+  KeyT* d_keys = allocateDeviceArray<KeyT>(keys.size());
+  ValueT* d_vals = allocateDeviceArray<ValueT>(vals.size());
+  copyToDevice(d_keys, keys.data(), keys.size());
+  copyToDevice(d_vals, vals.data(), vals.size());
+
+  GpuHashMap<KeyT, ValueT> map(num_buckets, device_idx, seed, verbose);
+  map.buildTable(d_keys, d_vals, keys.size());
+
+  KeyT fake_key = 999;
+  KeyT* d_fake = allocateDeviceArray<KeyT>(1);
+  copyToDevice(d_fake, &fake_key, 1);
+  map.deleteTable(d_fake, 1);
+
+  KeyT target = 3;
+  KeyT* d_target = allocateDeviceArray<KeyT>(1);
+  copyToDevice(d_target, &target, 1);
+  map.deleteTable(d_target, 1);
+  uint32_t before = map.countTable();
+  map.buildTable(d_target, d_vals + 2, 1);
+  uint32_t after = map.countTable();
+
+  bool ok = (after == before + 1);
+  if (!ok) std::cerr << "[BoundaryTest] Count mismatch after reinsert\n";
+
+  freeDeviceArray(d_fake);
+  freeDeviceArray(d_target);
+  freeDeviceArray(d_keys);
+  freeDeviceArray(d_vals);
+  return ok;
+}
+
+template <typename KeyT=uint32_t, typename ValueT=uint32_t>
+bool run_delete_duplicates(uint32_t num_buckets,
+                           uint32_t device_idx = 0,
+                           uint32_t seed = 33333,
+                           bool verbose = false) {
+  std::cout << "\n=== Running Duplicate Delete Test ===" << std::endl;
+
+  std::vector<KeyT> keys = {1, 2, 2, 2, 3, 4};
+  std::vector<ValueT> vals = {10, 20, 21, 22, 30, 40};
+  KeyT* d_keys = allocateDeviceArray<KeyT>(keys.size());
+  ValueT* d_vals = allocateDeviceArray<ValueT>(vals.size());
+  copyToDevice(d_keys, keys.data(), keys.size());
+  copyToDevice(d_vals, vals.data(), vals.size());
+
+  GpuHashMap<KeyT, ValueT> map(num_buckets, device_idx, seed, verbose);
+  map.buildTable(d_keys, d_vals, keys.size());
+
+  KeyT del_key = 2;
+  KeyT* d_del = allocateDeviceArray<KeyT>(1);
+  copyToDevice(d_del, &del_key, 1);
+  map.deleteTable(d_del, 1);
+  map.deleteTable(d_del, 1);
+
+  uint32_t cnt = map.countTable();
+  bool ok = (cnt == 3);
+  if (!ok)
+    std::cerr << "[DuplicateDelete] Count mismatch, got " << cnt << " expected 3\n";
+
+  freeDeviceArray(d_keys);
+  freeDeviceArray(d_vals);
+  freeDeviceArray(d_del);
+  return ok;
+}
+
+template <typename KeyT=uint32_t, typename ValueT=uint32_t>
+bool run_delete_concurrent(uint32_t num_buckets,
+                           uint32_t num_keys,
+                           uint32_t device_idx = 0,
+                           uint32_t seed = 44444,
+                           bool verbose = false) {
+  std::cout << "\n=== Running Concurrent Delete Test ===" << std::endl;
+
+  std::vector<KeyT> h_keys(num_keys);
+  std::vector<ValueT> h_vals(num_keys);
+  for (uint32_t i = 0; i < num_keys; ++i) {
+    h_keys[i] = i;
+    h_vals[i] = i * 10 + 1;
+  }
+
+  KeyT* d_keys = allocateDeviceArray<KeyT>(num_keys);
+  ValueT* d_vals = allocateDeviceArray<ValueT>(num_keys);
+  copyToDevice(d_keys, h_keys.data(), num_keys);
+  copyToDevice(d_vals, h_vals.data(), num_keys);
+
+  GpuHashMap<KeyT, ValueT> map(num_buckets, device_idx, seed, verbose);
+  map.buildTable(d_keys, d_vals, num_keys);
+
+  cudaStream_t s1, s2;
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+
+  std::vector<KeyT> del1, del2;
+  for (uint32_t i = 0; i < num_keys; ++i)
+    ((i % 2 == 0) ? del1 : del2).push_back(h_keys[i]);
+
+  KeyT* d_del1 = allocateDeviceArray<KeyT>(del1.size());
+  KeyT* d_del2 = allocateDeviceArray<KeyT>(del2.size());
+  copyToDevice(d_del1, del1.data(), del1.size());
+  copyToDevice(d_del2, del2.data(), del2.size());
+
+  map.deleteTable(d_del1, del1.size());
+  map.deleteTable(d_del2, del2.size());
+  cudaStreamSynchronize(s1);
+  cudaStreamSynchronize(s2);
+
+  uint32_t cnt_after = map.countTable();
+  bool ok = (cnt_after == 0);
+  if (!ok)
+    std::cerr << "[ConcurrentDelete] Expected 0 keys, got " << cnt_after << "\n";
+
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  freeDeviceArray(d_del1);
+  freeDeviceArray(d_del2);
+  freeDeviceArray(d_keys);
+  freeDeviceArray(d_vals);
+  return ok;
+}
+
+// ===============================================================
+// === MAIN ======================================================
+// ===============================================================
 int main() {
   bool all_ok = true;
   all_ok = all_ok && run_delete_suite<uint32_t, uint32_t>(4096, 1000);
   all_ok = all_ok && run_delete_suite<uint32_t, uint32_t>(1<<15, 5000);
+
+  all_ok = all_ok && run_delete_edge_cases<uint32_t, uint32_t>(2048);
+  all_ok = all_ok && run_delete_duplicates<uint32_t, uint32_t>(2048);
+  all_ok = all_ok && run_delete_concurrent<uint32_t, uint32_t>(4096, 1000);
+
   if (all_ok) {
-    std::cout << "✓ Delete tests passed!" << std::endl;
+    std::cout << "✓ All Delete tests (extended) passed!" << std::endl;
     return 0;
   } else {
-    std::cout << "✗ Delete tests failed!" << std::endl;
+    std::cout << "✗ Some Delete tests failed!" << std::endl;
     return 1;
   }
 }
-
