@@ -4,3 +4,5 @@ add_executable(test_hash_map_comprehensive test_hash_map_comprehensive.cu)
 add_executable(test_count_comprehensive test_count_comprehensive.cu)
 add_executable(test_debug test_debug.cu)
 add_executable(test_insert test_insert.cu)
+add_executable(test_delete test_delete.cu)
+
