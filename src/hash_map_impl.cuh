@@ -188,6 +188,16 @@ class GpuHashMap {
   uint32_t countTable();
 
   /*
+   * countTableOptimized - Count total valid elements (optimized version)
+   *
+   * Uses block-level reduction to minimize atomic operations.
+   *
+   * Returns:
+   *   Number of occupied slots
+   */
+  uint32_t countTableOptimized();
+
+  /*
    * concurrentOperations - Mixed operations in one batch
    *
    * Performs insert, delete, and search operations concurrently.
