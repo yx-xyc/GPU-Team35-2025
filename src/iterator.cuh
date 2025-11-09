@@ -69,31 +69,51 @@ class GpuHashMapIterator {
                      uint32_t num_buckets)
       : current_index_(0) {
 
-    // TODO: Implement iterator initialization
-    // Hints:
-    //   1. Allocate host arrays for keys, values, status
-    //   2. cudaMemcpy from device to host
-    //   3. Loop through arrays, collect OCCUPIED entries into pairs_
-    //   4. Free host arrays
-    //
-    // Example:
-    //   KeyT* h_keys = new KeyT[num_buckets];
-    //   ValueT* h_values = new ValueT[num_buckets];
-    //   uint32_t* h_status = new uint32_t[num_buckets];
-    //
-    //   cudaMemcpy(h_keys, d_keys, ...);
-    //   cudaMemcpy(h_values, d_values, ...);
-    //   cudaMemcpy(h_status, d_status, ...);
-    //
-    //   for (uint32_t i = 0; i < num_buckets; i++) {
-    //     if (h_status[i] == OCCUPIED) {
-    //       pairs_.push_back(KeyValuePair<KeyT, ValueT>(h_keys[i], h_values[i]));
-    //     }
-    //   }
-    //
-    //   delete[] h_keys;
-    //   delete[] h_values;
-    //   delete[] h_status;
+    // Allocate host arrays for temporary storage
+    KeyT* h_keys = new KeyT[num_buckets];
+    ValueT* h_values = new ValueT[num_buckets];
+    uint32_t* h_status = new uint32_t[num_buckets];
+
+    // Copy data from device to host
+    cudaError_t err;
+    err = cudaMemcpy(h_keys, d_keys, num_buckets * sizeof(KeyT), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+      delete[] h_keys;
+      delete[] h_values;
+      delete[] h_status;
+      throw std::runtime_error("Failed to copy keys from device: " +
+                               std::string(cudaGetErrorString(err)));
+    }
+
+    err = cudaMemcpy(h_values, d_values, num_buckets * sizeof(ValueT), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+      delete[] h_keys;
+      delete[] h_values;
+      delete[] h_status;
+      throw std::runtime_error("Failed to copy values from device: " +
+                               std::string(cudaGetErrorString(err)));
+    }
+
+    err = cudaMemcpy(h_status, d_status, num_buckets * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+      delete[] h_keys;
+      delete[] h_values;
+      delete[] h_status;
+      throw std::runtime_error("Failed to copy status from device: " +
+                               std::string(cudaGetErrorString(err)));
+    }
+
+    // Collect all OCCUPIED entries into pairs_ vector
+    for (uint32_t i = 0; i < num_buckets; i++) {
+      if (h_status[i] == OCCUPIED) {
+        pairs_.push_back(KeyValuePair<KeyT, ValueT>(h_keys[i], h_values[i]));
+      }
+    }
+
+    // Free temporary host arrays
+    delete[] h_keys;
+    delete[] h_values;
+    delete[] h_status;
   }
 
   /*

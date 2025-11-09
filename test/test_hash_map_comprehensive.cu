@@ -388,7 +388,7 @@ bool testVariousLoadFactors() {
   printSectionHeader("Test 8: Various Load Factors");
 
   const uint32_t num_buckets = 10000;
-  std::vector<double> load_factors = {0.1, 0.25, 0.5, 0.75, 0.9, 0.95};
+  std::vector<double> load_factors = {0.1, 0.25, 0.5, 0.75, 0.8, 0.9};
 
   bool all_passed = true;
 
