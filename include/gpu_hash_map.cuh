@@ -29,8 +29,8 @@
 
 // Include implementation files
 #include "../src/hash_map_context.cuh"
-#include "../src/hash_map_impl.cuh"
 #include "../src/iterator.cuh"
+#include "../src/hash_map_impl.cuh"
 
 // Include warp operations
 #include "../src/warp/insert.cuh"
@@ -43,4 +43,4 @@
 #include "../src/kernels/search_kernel.cuh"
 #include "../src/kernels/delete_kernel.cuh"
 #include "../src/kernels/count_kernel.cuh"
-#include "../src/kernels/concurrent_kernel.cuh"
+// #include "../src/kernels/concurrent_kernel.cuh"  // TODO: Not implemented yet

@@ -235,6 +235,28 @@ class GpuHashMap {
   }
 
   /*
+   * getIterator - Create iterator for traversing all key-value pairs
+   *
+   * Returns an iterator that allows sequential access to all valid entries.
+   * The iterator copies data from device to host, so it's best used for
+   * small tables or when you need to inspect all entries.
+   *
+   * Returns:
+   *   GpuHashMapIterator instance
+   *
+   * Usage:
+   *   auto iter = hash_map.getIterator();
+   *   while (iter.hasNext()) {
+   *     auto pair = iter.next();
+   *     std::cout << pair.key << " -> " << pair.value << std::endl;
+   *   }
+   */
+  GpuHashMapIterator<KeyT, ValueT> getIterator() {
+    CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
+    return GpuHashMapIterator<KeyT, ValueT>(d_keys_, d_values_, d_status_, num_buckets_);
+  }
+
+  /*
    * getNumBuckets - Get table size
    */
   uint32_t getNumBuckets() const {

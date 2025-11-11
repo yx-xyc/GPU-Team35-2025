@@ -6,3 +6,5 @@ add_executable(test_debug test_debug.cu)
 add_executable(test_insert test_insert.cu)
 add_executable(test_delete test_delete.cu)
 add_executable(test_count_performance test_count_performance.cu)
+add_executable(test_iterator test_iterator.cu)
+

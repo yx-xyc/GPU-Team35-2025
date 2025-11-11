@@ -171,14 +171,50 @@ int main() {
   std::cout << "  Not found: " << num_not_found << " / " << num_deletes << std::endl;
   std::cout << std::endl;
 
+  // 9. Iterator example
+  std::cout << "=== Iterator Example ===" << std::endl;
+  std::cout << "Creating iterator to traverse all entries..." << std::endl;
+
+  timer.start();
+  auto iter = hash_map.getIterator();
+  double iter_create_time = timer.elapsed_ms();
+
+  std::cout << "  Iterator created in: " << iter_create_time << " ms" << std::endl;
+  std::cout << "  Total entries in table: " << iter.size() << std::endl;
+  std::cout << std::endl;
+
+  // Display first 10 entries
+  std::cout << "First 10 entries from iterator:" << std::endl;
+  uint32_t display_count = 0;
+  while (iter.hasNext() && display_count < 10) {
+    auto pair = iter.next();
+    std::cout << "  [" << display_count << "] Key: " << pair.key
+              << " -> Value: " << pair.value << std::endl;
+    display_count++;
+  }
+  std::cout << std::endl;
+
+  // Demonstrate reset functionality
+  std::cout << "Demonstrating iterator reset..." << std::endl;
+  iter.reset();
+  std::cout << "  After reset, hasNext(): " << (iter.hasNext() ? "true" : "false") << std::endl;
+
+  // Count all entries using iterator
+  uint32_t iter_count = 0;
+  while (iter.hasNext()) {
+    iter.next();
+    iter_count++;
+  }
+  std::cout << "  Counted via iteration: " << iter_count << " entries" << std::endl;
+  std::cout << "  Matches iter.size(): " << (iter_count == iter.size() ? "✓" : "✗") << std::endl;
+  std::cout << std::endl;
+
   // Cleanup
   CHECK_CUDA_ERROR(cudaFree(d_keys));
   CHECK_CUDA_ERROR(cudaFree(d_values));
   CHECK_CUDA_ERROR(cudaFree(d_results));
-  
 
-  std::cout << "TODO: Complete implementation of hash map operations" << std::endl;
-  std::cout << "Once implemented, uncomment the code above to run the example." << std::endl;
+  std::cout << "=== Example completed successfully! ===" << std::endl;
 
   return 0;
 }
