@@ -86,12 +86,12 @@ class GpuHashMap {
     initHashFunction();
 
     // Allocate device memory
-    CHECK_CUDA_ERROR(cudaMalloc(&d_keys_, sizeof(KeyT) * num_buckets_));
-    CHECK_CUDA_ERROR(cudaMalloc(&d_values_, sizeof(ValueT) * num_buckets_));
-    CHECK_CUDA_ERROR(cudaMalloc(&d_status_, sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA_ERROR(cudaMalloc(&d_keys_, sizeof(KeyT) * int( 1.5 * num_buckets_) ));
+    CHECK_CUDA_ERROR(cudaMalloc(&d_values_, sizeof(ValueT) * int( 1.5 * num_buckets_) ) );
+    CHECK_CUDA_ERROR(cudaMalloc(&d_status_, sizeof(uint32_t) * int( 1.5 * num_buckets_) ));
 
     // Initialize status array to EMPTY
-    CHECK_CUDA_ERROR(cudaMemset(d_status_, 0, sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA_ERROR(cudaMemset(d_status_, 0, sizeof(uint32_t) * int( 1.5 * num_buckets_) ));
 
     // Initialize context
     context_.initialize(num_buckets_, hash_x_, hash_y_, d_keys_, d_values_, d_status_);

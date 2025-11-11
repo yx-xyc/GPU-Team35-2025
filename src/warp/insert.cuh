@@ -18,7 +18,7 @@
  */
 
 #pragma once
-
+#include <stdio.h>
 #include "../hash_map_context.cuh"
 
 template <typename KeyT, typename ValueT>
@@ -54,9 +54,11 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
     // If PENDING, another thread is writing - wait briefly, then check for duplicate
     if (slot_status == PENDING) {
       // Bounded busy-wait for PENDING to resolve to OCCUPIED
-      const int MAX_WAIT_ITERATIONS = 100000;
+      const int MAX_WAIT_ITERATIONS = 100000000;
       int wait_iter = 0;
       uint32_t current_status = PENDING;
+      // while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
+
       while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
         __threadfence();  // Force memory visibility
         current_status = d_status_[slot];
@@ -109,7 +111,9 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       probe--;
       continue;
     }
-
+  
+    printf("[ERROR] insertKey: Unexpected slot status %u at slot=%u (tid=%d, key=%u)\n",
+           slot_status, slot, threadIdx.x + blockIdx.x * blockDim.x, key);
     // Unexpected status - continue probing
   }
 
