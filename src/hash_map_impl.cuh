@@ -70,7 +70,7 @@ class GpuHashMap {
              int64_t seed = 0,
              bool verbose = false,
              uint32_t search_warp_threshold = 5000)
-      : num_buckets_(num_buckets),
+      : num_buckets_(2 * num_buckets),
         device_idx_(device_idx),
         seed_(seed),
         verbose_(verbose),
@@ -86,15 +86,15 @@ class GpuHashMap {
     initHashFunction();
 
     // Allocate device memory
-    CHECK_CUDA_ERROR(cudaMalloc(&d_keys_, sizeof(KeyT) * num_buckets_));
-    CHECK_CUDA_ERROR(cudaMalloc(&d_values_, sizeof(ValueT) * num_buckets_));
-    CHECK_CUDA_ERROR(cudaMalloc(&d_status_, sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA_ERROR(cudaMalloc(&d_keys_, sizeof(KeyT) * int(  num_buckets_) ));
+    CHECK_CUDA_ERROR(cudaMalloc(&d_values_, sizeof(ValueT) * int(  num_buckets_) ) );
+    CHECK_CUDA_ERROR(cudaMalloc(&d_status_, sizeof(uint32_t) * int(  num_buckets_) ));
 
     // Initialize status array to EMPTY
-    CHECK_CUDA_ERROR(cudaMemset(d_status_, 0, sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA_ERROR(cudaMemset(d_status_, 0, sizeof(uint32_t) * int(  num_buckets_) ));
 
     // Initialize context
-    context_.initialize(num_buckets_, hash_x_, hash_y_, d_keys_, d_values_, d_status_);
+    context_.initialize( num_buckets_, hash_x_, hash_y_, d_keys_, d_values_, d_status_);
 
     if (verbose_) {
       std::cout << toString() << std::endl;
