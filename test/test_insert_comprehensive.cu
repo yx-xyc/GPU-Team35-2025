@@ -95,7 +95,8 @@ int main() {
   std::cout << "Test 3: High collision scenario" << std::endl;
   {
     const uint32_t small_buckets = 8;
-    GpuHashMap<KeyT, ValueT> map(small_buckets, device_idx, 123, false);
+    // enforce collision 
+    GpuHashMap<KeyT, ValueT> map(int( 0.5 * small_buckets), device_idx, 123, false);
     const uint32_t num_keys = 64;
 
     std::vector<KeyT> h_keys(num_keys);
@@ -236,7 +237,8 @@ int main() {
   {
     const uint32_t small_buckets = 16;
     const uint32_t num_keys = 64;
-    GpuHashMap<KeyT, ValueT> map(small_buckets, device_idx, 777, false);
+    // enforce overflowing 
+    GpuHashMap<KeyT, ValueT> map(int( 0.5 *small_buckets), device_idx, 777, false);
 
     std::vector<KeyT> h_keys(num_keys);
     std::vector<ValueT> h_values(num_keys);
