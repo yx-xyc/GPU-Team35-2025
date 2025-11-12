@@ -57,7 +57,6 @@ __device__ __forceinline__ void GpuHashMapContext<KeyT, ValueT>::insertKey(
       const int MAX_WAIT_ITERATIONS = 100000000;
       int wait_iter = 0;
       uint32_t current_status = PENDING;
-      // while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
 
       while (wait_iter < MAX_WAIT_ITERATIONS && current_status == PENDING) {
         __threadfence();  // Force memory visibility
