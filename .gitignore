@@ -10,3 +10,9 @@
 
 # ignore VSCode settings
 .vscode/
+
+# ignore temporary analysis/exploration documents
+ARCHITECTURE.txt
+EXPLORATION_SUMMARY.txt
+QUICK_REFERENCE.md
+SEARCH_ANALYSIS.md
