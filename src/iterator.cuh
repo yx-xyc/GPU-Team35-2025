@@ -21,8 +21,6 @@
  *
  * REFERENCES:
  *   - SlabHash/src/slab_iterator.cuh (for slab-based version)
- *
- * TODO: Implement iterator functionality
  */
 
 #pragma once
@@ -150,21 +148,3 @@ class GpuHashMapIterator {
     current_index_ = 0;
   }
 };
-
-/*
- * Add getIterator() method to GpuHashMap class
- */
-template <typename KeyT, typename ValueT>
-class GpuHashMap;  // Forward declaration
-
-// This would be added to hash_map_impl.cuh, but showing here for completeness
-/*
-template <typename KeyT, typename ValueT>
-GpuHashMapIterator<KeyT, ValueT> GpuHashMap<KeyT, ValueT>::getIterator() {
-  return GpuHashMapIterator<KeyT, ValueT>(
-      context_.getKeys(),
-      context_.getValues(),
-      context_.getStatus(),
-      num_buckets_);
-}
-*/

@@ -17,8 +17,6 @@
  * REFERENCES:
  *   - CUDA SDK samples: reduction
  *   - SlabHash/src/concurrent_map/device/count_kernel.cuh
- *
- * TODO: Implement count kernel and host wrapper
  */
 
 #pragma once

@@ -16,8 +16,6 @@
  *
  * REFERENCES:
  *   - SlabHash/src/concurrent_map/device/build.cuh
- *
- * TODO: Implement bulk insert kernel and host wrapper
  */
 
 #pragma once
@@ -59,26 +57,6 @@ __global__ void build_table_kernel(
     // Warp cooperates - threads with has_work=false participate but don't insert
     ctx.insertKey(has_work, laneId, key, value, bucket);
 }
-
-  // TODO: Implement kernel
-  // Hints:
-  //   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-  //   uint32_t laneId = threadIdx.x & 0x1F;
-  //
-  //   // Early exit for warps beyond data
-  //   if ((tid - laneId) >= num_keys) return;
-  //
-  //   // Each thread gets its key/value
-  //   bool has_work = (tid < num_keys);
-  //   KeyT my_key = has_work ? d_keys[tid] : 0;
-  //   ValueT my_value = has_work ? d_values[tid] : 0;
-  //
-  //   // Compute bucket
-  //   uint32_t bucket = ctx.computeBucket(my_key);
-  //
-  //   // Warp cooperates to insert
-  //   ctx.insertKey(has_work, laneId, my_key, my_value, bucket);
-  //}
 
 /*
  * Host wrapper: Launch build kernel

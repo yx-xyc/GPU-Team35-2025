@@ -13,8 +13,6 @@
  *
  * REFERENCES:
  *   - SlabHash/src/concurrent_map/device/search_kernel.cuh
- *
- * TODO: Implement bulk search kernel and host wrapper
  */
 
 #pragma once

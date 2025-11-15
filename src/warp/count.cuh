@@ -14,8 +14,6 @@
  *
  * REFERENCES:
  *   - SlabHash/src/concurrent_map/warp/count.cuh
- *
- * TODO: Implement warp-cooperative count
  */
 
 #pragma once

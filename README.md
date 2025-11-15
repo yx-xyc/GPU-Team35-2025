@@ -1,39 +1,39 @@
 # GPU Hash Map Library
 **GPU Course Project - Team 35**
 
-A high-performance, warp-cooperative hash map implementation for CUDA GPUs. This library provides a generic key-value data structure designed for GPU applications, featuring concurrent operations and bulk processing capabilities.
+A high-performance, warp-cooperative hash map implementation for CUDA GPUs. This library provides a generic key-value data structure designed for GPU applications, featuring concurrent operations, bulk processing capabilities, and adaptive search strategies.
 
 ## Project Overview
 
-This project implements a GPU hash map library with the following goals:
+This project implements a complete GPU hash map library with the following features:
 - **Warp-cooperative operations**: 32 threads work together for efficient hash table operations
 - **Generic design**: Template-based to support various key and value types
 - **Concurrent operations**: Support for mixed insert/delete/search batches
-- **Simple starting point**: Fixed-size table design that can evolve to dynamic allocation
+- **Hybrid search strategy**: Adaptive algorithm that switches between one-warp-per-key and one-thread-per-key based on workload size
+- **Optimized count operations**: Block-level reduction to minimize atomic operations
+- **Iterator support**: Sequential traversal of all key-value pairs
 
-Inspired by the SlabHash architecture (Ashkiani et al., IPDPS'18), this implementation starts with a simpler fixed-size design suitable for learning and prototyping, with a clear path to more advanced features.
+Inspired by the SlabHash architecture (Ashkiani et al., IPDPS'18), this implementation adopts the warp-cooperative design philosophy but uses a simplified fixed-size table with linear probing instead of dynamic slab allocation. This design choice makes it efficient for applications with predictable table sizes while being easier to understand and extend.
 
 ## Build Instructions
 
 ### Prerequisites
 - CUDA Toolkit 8.0 or higher
-- CMake 3.8 or higher
+- CMake 3.18 or higher
 - C++11 compatible compiler
 - NVIDIA GPU with compute capability 3.5+
 
 ### Configure GPU Compute Capability
 
-Edit `CMakeLists.txt` to match your GPU architecture. For example:
+Edit line 4 of `CMakeLists.txt` to match your GPU architecture:
 ```cmake
-option(HASHMAP_GENCODE_SM75 "GENCODE_SM75" ON)  # For RTX 2080 (Turing)
-option(HASHMAP_GENCODE_SM80 "GENCODE_SM80" ON)  # For A100 (Ampere)
+set(CMAKE_CUDA_ARCHITECTURES 75)  # Change to your GPU's compute capability
 ```
 
-Or use `ccmake` for interactive configuration:
-```bash
-mkdir build && cd build
-cmake ..  # Toggle architecture options
-```
+Common values:
+- `75` - RTX 2080, RTX 2080 Ti (Turing)
+- `80` - A100 (Ampere)
+- `86` - RTX 3090 (Ampere)
 
 ### Build
 
@@ -45,8 +45,15 @@ make
 
 Executables will be in `build/bin/`:
 - `example` - Demonstration program
-- `test_basic` - Basic correctness tests
-- `test_concurrent` - Concurrent operations tests
+- `test_insert` - Insert operation tests
+- `test_delete` - Delete operation tests
+- `test_count_only` - Count operation tests
+- `test_hash_map_comprehensive` - Comprehensive functionality tests
+- `test_count_comprehensive` - Comprehensive count tests
+- `test_count_performance` - Count performance benchmarks
+- `test_hybrid_search` - Hybrid search strategy tests
+- `test_iterator` - Iterator functionality tests
+- `test_debug` - Debug utilities
 
 ## Usage
 
@@ -76,10 +83,24 @@ hash_map.searchTable(d_keys, d_results, num_keys);
 // Delete keys
 hash_map.deleteTable(d_keys, num_keys);
 
+// Count remaining entries
+uint32_t count = hash_map.countTable();
+
 // Cleanup
 cudaFree(d_keys);
 cudaFree(d_values);
 cudaFree(d_results);
+```
+
+### Iterator Usage
+
+```cuda
+// Traverse all key-value pairs
+auto iter = hash_map.getIterator();
+while (iter.hasNext()) {
+  auto pair = iter.next();
+  std::cout << pair.key << " -> " << pair.value << std::endl;
+}
 ```
 
 ### Warp-Cooperative Operations in Custom Kernels
@@ -115,70 +136,138 @@ Host-side class that owns GPU memory.
 
 **Constructor:**
 ```cpp
-GpuHashMap(uint32_t num_buckets, uint32_t device_idx = 0,
-           int64_t seed = 0, bool verbose = false)
+GpuHashMap(uint32_t num_buckets,
+           uint32_t device_idx = 0,
+           int64_t seed = 0,
+           bool verbose = false,
+           uint32_t search_warp_threshold = 5000)
 ```
+
+**Parameters:**
+- `num_buckets` - Size of hash table
+- `device_idx` - GPU device to use (default: 0)
+- `seed` - Random seed for hash function (default: 0)
+- `verbose` - Print debug information (default: false)
+- `search_warp_threshold` - Queries below this use one-warp-per-key, above use one-thread-per-key (default: 5000)
 
 **Operations:**
 - `void buildTable(KeyT* d_keys, ValueT* d_values, uint32_t num_keys)` - Bulk insert
-- `void searchTable(KeyT* d_queries, ValueT* d_results, uint32_t num_queries)` - Bulk search
+- `void searchTable(KeyT* d_queries, ValueT* d_results, uint32_t num_queries)` - Bulk search (hybrid strategy)
 - `void deleteTable(KeyT* d_keys, uint32_t num_keys)` - Bulk delete
 - `uint32_t countTable()` - Count valid elements
+- `uint32_t countTableOptimized()` - Count valid elements (optimized with block-level reduction)
 - `void clear()` - Clear all entries
-- `GpuHashMapContext<KeyT, ValueT> getContext()` - Get device context
+- `GpuHashMapContext<KeyT, ValueT> getContext()` - Get device context for custom kernels
+- `GpuHashMapIterator<KeyT, ValueT> getIterator()` - Get iterator for sequential traversal
 
 ### GpuHashMapContext<KeyT, ValueT>
 
-Device-side class for use in kernels (shallow-copied).
+Device-side class for use in kernels (shallow-copied, does not own memory).
 
 **Operations:**
 - `__device__ uint32_t computeBucket(const KeyT& key)` - Hash function
-- `__device__ void insertKey(bool, uint32_t laneId, KeyT, ValueT, uint32_t bucket)` - Insert
-- `__device__ void searchKey(bool, uint32_t laneId, KeyT, ValueT&, uint32_t bucket)` - Search
-- `__device__ void deleteKey(bool, uint32_t laneId, KeyT, uint32_t bucket)` - Delete
+- `__device__ void insertKey(bool, uint32_t laneId, KeyT, ValueT, uint32_t bucket)` - Warp-cooperative insert
+- `__device__ void searchKey(bool, uint32_t laneId, KeyT, ValueT&, uint32_t bucket)` - Warp-cooperative search
+- `__device__ void deleteKey(bool, uint32_t laneId, KeyT, uint32_t bucket)` - Warp-cooperative delete
+- `__device__ void countKey(bool, uint32_t laneId, KeyT, uint32_t&, uint32_t bucket)` - Warp-cooperative count
+
+### GpuHashMapIterator<KeyT, ValueT>
+
+Iterator for sequential traversal of all key-value pairs.
+
+**Operations:**
+- `bool hasNext()` - Check if more entries exist
+- `KeyValuePair<KeyT, ValueT> next()` - Get next key-value pair
 
 ## Testing
 
 ```bash
 cd build/bin
 
-# Run basic correctness tests
-./test_basic
-
-# Run concurrent operations tests
-./test_concurrent
-
 # Run example demonstration
 ./example
+
+# Correctness tests
+./test_insert                      # Insert operation tests
+./test_delete                      # Delete operation tests
+./test_count_only                  # Count operation tests
+./test_hash_map_comprehensive      # Comprehensive functionality tests
+./test_count_comprehensive         # Comprehensive count tests
+./test_iterator                    # Iterator functionality tests
+
+# Performance tests
+./test_count_performance           # Count performance benchmarks
+./test_hybrid_search               # Hybrid search strategy tests
+
+# Debug utilities
+./test_debug
 ```
 
-## Performance Notes
+## Implementation Details & Performance
 
+### Collision Resolution
+- **Strategy**: Linear probing with open addressing
+- **Maximum probe distance**: 128 slots
+- **Slot states**: EMPTY, OCCUPIED, TOMBSTONE, PENDING
+
+### Hash Function
+Universal hashing with prime modulo:
+```
+bucket = (((hash_x ^ key) + hash_y) % PRIME_DIVISOR) % num_buckets
+PRIME_DIVISOR = 4294967291u
+```
+
+### Hybrid Search Strategy
+The library automatically adapts search strategy based on workload size:
+- **Small workloads** (< threshold, default 5000): One warp per key
+- **Large workloads** (>= threshold): One thread per key
+- Threshold configurable via constructor parameter
+
+### Performance Characteristics
 - **Warp efficiency**: Operations are most efficient when threads in a warp access nearby buckets
 - **Load factor**: Performance degrades with high load factors (>0.7). Recommended: 0.5-0.6
 - **Hash quality**: Good hash function distribution is critical for performance
-- **Concurrent operations**: Mixed operations may have lower throughput than pure operations
+- **Insert protocol**: Three-state protocol with READ-FIRST optimization reduces contention
+- **Count optimization**: Block-level reduction minimizes atomic operations compared to naive implementation
 
 ## Project Structure
 
 ```
 GPU-Team35-2025/
-├── CMakeLists.txt           # Build configuration
-├── README.md                # This file
-├── TODO.md                  # Future enhancements
+├── CMakeLists.txt              # Build configuration
+├── README.md                   # This file
+├── CLAUDE.md                   # AI coding assistant guidance
 ├── include/
-│   └── gpu_hash_map.cuh    # Main public API
+│   └── gpu_hash_map.cuh       # Main public API (single include file)
 ├── src/
-│   ├── hash_map_context.cuh   # Device context
-│   ├── hash_map_impl.cuh      # Host implementation
-│   ├── warp/                  # Warp operations
-│   ├── kernels/               # CUDA kernels
-│   └── iterator.cuh           # Iterator support
+│   ├── hash_map_impl.cuh      # Host-side class (owns memory)
+│   ├── hash_map_context.cuh   # Device-side context (no ownership)
+│   ├── iterator.cuh           # Iterator support
+│   ├── warp/                  # Warp-cooperative operations
+│   │   ├── insert.cuh         # Insert operation
+│   │   ├── search.cuh         # Search operation
+│   │   ├── delete.cuh         # Delete operation
+│   │   └── count.cuh          # Count operation
+│   └── kernels/               # CUDA kernel implementations
+│       ├── build_kernel.cuh           # Bulk insert
+│       ├── search_kernel.cuh          # Bulk search (hybrid strategy)
+│       ├── delete_kernel.cuh          # Bulk delete
+│       ├── count_kernel.cuh           # Count entries
+│       ├── count_kernel_optimized.cuh # Optimized count
+│       └── dump_kernels.cuh           # Debug utilities
 ├── examples/
-│   └── main.cu               # Usage examples
+│   └── main.cu                # Usage demonstration
 └── test/
-    ├── test_basic.cu         # Correctness tests
-    └── test_concurrent.cu    # Concurrent tests
+    ├── test_utils.cuh                 # Testing utilities
+    ├── test_insert.cu                 # Insert tests
+    ├── test_delete.cu                 # Delete tests
+    ├── test_count_only.cu             # Count tests
+    ├── test_hash_map_comprehensive.cu # Comprehensive tests
+    ├── test_count_comprehensive.cu    # Count comprehensive tests
+    ├── test_count_performance.cu      # Count benchmarks
+    ├── test_hybrid_search.cu          # Hybrid search tests
+    ├── test_iterator.cu               # Iterator tests
+    └── test_debug.cu                  # Debug tests
 ```
 
 ## References
@@ -190,10 +279,6 @@ GPU-Team35-2025/
 
 MIT License - See LICENSE file for details.
 
-## Team Members
+## Authors
 
 Team 35 - GPU Course Project 2025
-
-## Contributing
-
-This is a course project. For questions or suggestions, please coordinate with team members.

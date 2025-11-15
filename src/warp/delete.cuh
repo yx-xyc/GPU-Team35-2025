@@ -23,10 +23,6 @@
 #pragma once
 #include "../hash_map_context.cuh"
 
-#ifndef WARP_WIDTH
-#define WARP_WIDTH 32
-#endif
-
 /**
  * Delete a key from the hash table using linear probing
  *
