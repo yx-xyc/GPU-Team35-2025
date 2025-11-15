@@ -178,6 +178,17 @@ class GpuHashMap {
   void deleteTable(const KeyT* d_keys, uint32_t num_keys);
 
   /*
+   * deleteTableOptimized - Bulk delete operation (optimized version)
+   *
+   * Uses optimized kernel with reduced atomic operations for better performance.
+   *
+   * Parameters:
+   *   d_keys - device array of keys to delete
+   *   num_keys - number of keys to delete
+   */
+  void deleteTableOptimized(const KeyT* d_keys, uint32_t num_keys);
+
+  /*
    * countTable - Count total valid elements
    *
    * Returns the number of valid key-value pairs currently in the table.

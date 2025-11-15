@@ -21,6 +21,7 @@
 
 #pragma once
 #include "../warp/delete.cuh"
+#include "delete_kernel_optimized.cuh"
 #include <cuda_runtime.h>
 
 /**
@@ -95,4 +96,18 @@ inline void launch_delete_kernel(
 template <typename KeyT, typename ValueT>
 void GpuHashMap<KeyT, ValueT>::deleteTable(const KeyT* d_keys, uint32_t num_keys) {
   launch_delete_kernel<KeyT, ValueT>(context_, d_keys, num_keys);
+}
+
+/**
+ * Host-side API: Delete multiple keys from hash table (OPTIMIZED VERSION)
+ *
+ * Uses optimized kernel with reduced atomic operations for better performance.
+ *
+ * Parameters:
+ *   d_keys - device array of keys to delete
+ *   num_keys - number of keys
+ */
+template <typename KeyT, typename ValueT>
+void GpuHashMap<KeyT, ValueT>::deleteTableOptimized(const KeyT* d_keys, uint32_t num_keys) {
+  launch_delete_kernel_optimized<KeyT, ValueT>(context_, d_keys, num_keys);
 }
