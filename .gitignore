@@ -10,3 +10,9 @@
 
 # ignore VSCode settings
 .vscode/
+
+# ignore claude
+CLAUDE.md
+.claude/
+
+search_performance.csv
