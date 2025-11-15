@@ -13,8 +13,6 @@
  * REFERENCES:
  *   - SlabHash/src/concurrent_map/warp/insert.cuh (for slab-based version)
  *   - CUDA Programming Guide: Warp Vote Functions (__ballot_sync)
- *
- * TODO: Implement warp-cooperative insert with linear probing
  */
 
 #pragma once

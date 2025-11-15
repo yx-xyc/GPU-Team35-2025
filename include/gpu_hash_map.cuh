@@ -43,4 +43,3 @@
 #include "../src/kernels/search_kernel.cuh"
 #include "../src/kernels/delete_kernel.cuh"
 #include "../src/kernels/count_kernel.cuh"
-// #include "../src/kernels/concurrent_kernel.cuh"  // TODO: Not implemented yet
