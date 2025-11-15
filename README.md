@@ -18,7 +18,7 @@ Inspired by the SlabHash architecture (Ashkiani et al., IPDPS'18), this implemen
 ## Build Instructions
 
 ### Prerequisites
-- CUDA Toolkit 8.0 or higher
+- CUDA Toolkit 12.2 or higher
 - CMake 3.18 or higher
 - C++11 compatible compiler
 - NVIDIA GPU with compute capability 3.5+
@@ -154,8 +154,9 @@ GpuHashMap(uint32_t num_buckets,
 - `void buildTable(KeyT* d_keys, ValueT* d_values, uint32_t num_keys)` - Bulk insert
 - `void searchTable(KeyT* d_queries, ValueT* d_results, uint32_t num_queries)` - Bulk search (hybrid strategy)
 - `void deleteTable(KeyT* d_keys, uint32_t num_keys)` - Bulk delete
+- `void deleteTableOptimized(KeyT* d_keys, uint32_t num_keys)` - Optimized bulk delete with reduced atomic operations
 - `uint32_t countTable()` - Count valid elements
-- `uint32_t countTableOptimized()` - Count valid elements (optimized with block-level reduction)
+- `uint32_t countTableOptimized()` - Optimized count with block-level reduction
 - `void clear()` - Clear all entries
 - `GpuHashMapContext<KeyT, ValueT> getContext()` - Get device context for custom kernels
 - `GpuHashMapIterator<KeyT, ValueT> getIterator()` - Get iterator for sequential traversal
@@ -183,6 +184,18 @@ Iterator for sequential traversal of all key-value pairs.
 
 ```bash
 cd build/bin
+
+# Check CUDA version and basic functionality
+./test_cuda_version
+
+# Run optimized delete tests
+./test_delete_optimized
+
+# Run basic correctness tests
+./test_basic
+
+# Run concurrent operations tests
+./test_concurrent
 
 # Run example demonstration
 ./example

@@ -54,6 +54,7 @@ __global__ void build_table_kernel(
     // Compute bucket (safe even if has_work=false)
     uint32_t bucket = ctx.computeBucket(key);
 
+
     // Warp cooperates - threads with has_work=false participate but don't insert
     ctx.insertKey(has_work, laneId, key, value, bucket);
 }
