@@ -158,6 +158,7 @@ class GpuHashMap {
    * searchTable - Bulk search operation
    *
    * Searches for multiple keys in parallel.
+   * Uses hybrid strategy based on search_warp_threshold.
    *
    * Parameters:
    *   d_queries - device array of query keys
@@ -165,6 +166,32 @@ class GpuHashMap {
    *   num_queries - number of queries
    */
   void searchTable(const KeyT* d_queries, ValueT* d_results, uint32_t num_queries);
+
+  /*
+   * searchTableWarpPerKey - Force warp-per-key search strategy
+   *
+   * Directly calls one-warp-per-key kernel, ignoring threshold.
+   * Each warp searches ONE key cooperatively (32x parallelism per key).
+   *
+   * Parameters:
+   *   d_queries - device array of query keys
+   *   d_results - device array for results (output)
+   *   num_queries - number of queries
+   */
+  void searchTableWarpPerKey(const KeyT* d_queries, ValueT* d_results, uint32_t num_queries);
+
+  /*
+   * searchTableThreadPerKey - Force thread-per-key search strategy
+   *
+   * Directly calls one-thread-per-key kernel, ignoring threshold.
+   * Each thread searches its own key independently.
+   *
+   * Parameters:
+   *   d_queries - device array of query keys
+   *   d_results - device array for results (output)
+   *   num_queries - number of queries
+   */
+  void searchTableThreadPerKey(const KeyT* d_queries, ValueT* d_results, uint32_t num_queries);
 
   /*
    * deleteTable - Bulk delete operation
