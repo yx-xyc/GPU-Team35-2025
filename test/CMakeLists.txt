@@ -11,4 +11,5 @@ add_executable(test_delete_optimized test_delete_optimized.cu)
 add_executable(test_count_performance test_count_performance.cu)
 add_executable(test_iterator test_iterator.cu)
 add_executable(test_cuda_version test_cuda_version.cu)
+add_executable(test_delete_performance test_delete_performance.cu)
 
