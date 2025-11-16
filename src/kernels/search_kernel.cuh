@@ -52,14 +52,19 @@ __global__ void search_table_kernel(GpuHashMapContext<KeyT, ValueT> ctx,
 }
 
 /*
- * ONE-WARP-PER-KEY Kernel: Each warp searches one key cooperatively
+ * ONE-WARP-PER-KEY Kernel with Stride Loop Optimization
  *
  * All 32 threads in a warp work together to search for ONE key.
  * They check 32 slots in parallel per iteration.
  *
+ * OPTIMIZATION: Uses stride loop so each warp processes MULTIPLE queries
+ * (similar to count kernel optimization pattern)
+ *
  * ADVANTAGES:
  *   - 32x parallelism per key
  *   - Faster for hard-to-find keys (high load factor)
+ *   - Better GPU utilization with stride loop
+ *   - Amortizes launch overhead
  *
  * USAGE: Best for small batches (< threshold)
  */
@@ -72,70 +77,67 @@ __global__ void search_table_one_warp_per_key_kernel(
 
   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
   uint32_t laneId = threadIdx.x & 0x1F;
+  uint32_t warpId = tid >> 5;  // Global warp ID
+  uint32_t num_warps = (gridDim.x * blockDim.x) >> 5;  // Total warps
 
-  // Calculate which warp this thread belongs to
-  uint32_t warpId = tid >> 5;  // tid / 32
+  // STRIDE LOOP: Each warp processes multiple queries
+  for (uint32_t query_idx = warpId; query_idx < num_queries; query_idx += num_warps) {
 
-  // Early exit: entire warp exits if beyond num_queries
-  if (warpId >= num_queries) return;
+    // ALL 32 threads in this warp work on the SAME query
+    KeyT shared_key = d_queries[query_idx];
+    ValueT result = SEARCH_NOT_FOUND;
 
-  // ALL 32 threads in this warp work on the SAME query
-  KeyT shared_key = d_queries[warpId];
-  ValueT result = SEARCH_NOT_FOUND;
+    // Compute bucket (all threads compute same bucket for same key)
+    uint32_t bucket = ctx.computeBucket(shared_key);
 
-  // Compute bucket (all threads compute same bucket for same key)
-  uint32_t bucket = ctx.computeBucket(shared_key);
+    // Get active mask
+    unsigned mask = __activemask();
+    bool done = false;
 
-  // Get active mask
-  unsigned mask = __activemask();
-  bool done = false;
+    // Warp-cooperative search: check 32 slots per iteration
+    for (uint32_t probe = 0; probe < GpuHashMapContext<KeyT, ValueT>::MAX_PROBE_LENGTH && __any_sync(mask, !done); probe += 32) {
 
-  // Warp-cooperative search: check 32 slots per iteration
-  for (uint32_t probe = 0; probe < GpuHashMapContext<KeyT, ValueT>::MAX_PROBE_LENGTH && __any_sync(mask, !done); probe += 32) {
+      if (!done) {
+        // Each thread checks a DIFFERENT slot for the SAME key
+        uint32_t slot = (bucket + probe + laneId) % ctx.getNumBuckets();
 
-    if (!done) {
-      // Each thread checks a DIFFERENT slot for the SAME key
-      uint32_t slot = (bucket + probe + laneId) % ctx.getNumBuckets();
+        // Read slot data
+        uint32_t status = ctx.getStatus()[slot];
+        KeyT slot_key = ctx.getKeys()[slot];
+        ValueT slot_value = ctx.getValues()[slot];
 
-      // Read slot data
-      uint32_t status = ctx.getStatus()[slot];
-      KeyT slot_key = ctx.getKeys()[slot];
-      ValueT slot_value = ctx.getValues()[slot];
+        // Memory fence
+        __threadfence();
 
-      // Memory fence
-      __threadfence();
-
-      // Check if this lane found the key
-      if (status == OCCUPIED && slot_key == shared_key) {
-        result = slot_value;
-        done = true;
+        // Check if this lane found the key
+        if (status == OCCUPIED && slot_key == shared_key) {
+          result = slot_value;
+          done = true;
+        }
+        // Check if this lane found EMPTY (key doesn't exist)
+        else if (status == EMPTY) {
+          done = true;
+        }
       }
-      // Check if this lane found EMPTY (key doesn't exist)
-      else if (status == EMPTY) {
-        done = true;
+
+      // Check if any thread found result (success or empty)
+      if (__any_sync(mask, done)) {
+        break;
       }
     }
 
-    // Check if any thread found result (success or empty)
-    if (__any_sync(mask, done)) {
-      break;
+    // Broadcast result across warp using shuffle
+    uint32_t found_mask = __ballot_sync(mask, result != SEARCH_NOT_FOUND);
+
+    if (found_mask != 0) {
+      int src_lane = __ffs(found_mask) - 1;
+      result = __shfl_sync(mask, result, src_lane);
     }
-  }
 
-  // Broadcast result across warp using shuffle
-  // Find the lane that has the actual result (if any)
-  uint32_t found_mask = __ballot_sync(mask, result != SEARCH_NOT_FOUND);
-
-  if (found_mask != 0) {
-    // Get the lane ID that found the result
-    int src_lane = __ffs(found_mask) - 1;  // Find first set bit (0-indexed)
-    // Broadcast result from that lane to all lanes
-    result = __shfl_sync(mask, result, src_lane);
-  }
-
-  // Only lane 0 writes the result (avoid 32 threads writing same value)
-  if (laneId == 0) {
-    d_results[warpId] = result;
+    // Only lane 0 writes the result
+    if (laneId == 0) {
+      d_results[query_idx] = result;
+    }
   }
 }
 
@@ -192,3 +194,65 @@ void GpuHashMap<KeyT, ValueT>::searchTable(const KeyT* d_queries,
   CHECK_CUDA_ERROR(cudaGetLastError());
   CHECK_CUDA_ERROR(cudaDeviceSynchronize());
 }
+
+/*
+ * Force warp-per-key strategy (ignores threshold)
+ *
+ * Directly calls one-warp-per-key kernel with stride loop optimization.
+ * Uses fixed grid size for better GPU utilization.
+ */
+template <typename KeyT, typename ValueT>
+void GpuHashMap<KeyT, ValueT>::searchTableWarpPerKey(const KeyT* d_queries,
+                                                      ValueT* d_results,
+                                                      uint32_t num_queries) {
+  CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
+
+  const uint32_t block_size = 128;
+  // Use fixed grid size for stride loop (better utilization)
+  const uint32_t num_blocks = 256;
+
+  if (verbose_) {
+    std::cout << "[GpuHashMap] Search (WARP-PER-KEY with stride): " << num_queries
+              << " queries" << std::endl;
+  }
+
+  search_table_one_warp_per_key_kernel<<<num_blocks, block_size>>>(
+      context_,
+      d_queries,
+      d_results,
+      num_queries);
+
+  CHECK_CUDA_ERROR(cudaGetLastError());
+  CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+}
+
+/*
+ * Force thread-per-key strategy (ignores threshold)
+ *
+ * Directly calls one-thread-per-key kernel.
+ * Each thread searches its own key independently.
+ */
+template <typename KeyT, typename ValueT>
+void GpuHashMap<KeyT, ValueT>::searchTableThreadPerKey(const KeyT* d_queries,
+                                                        ValueT* d_results,
+                                                        uint32_t num_queries) {
+  CHECK_CUDA_ERROR(cudaSetDevice(device_idx_));
+
+  const uint32_t block_size = 128;
+  const uint32_t num_blocks = (num_queries + block_size - 1) / block_size;
+
+  if (verbose_) {
+    std::cout << "[GpuHashMap] Search (FORCED THREAD-PER-KEY): " << num_queries
+              << " queries" << std::endl;
+  }
+
+  search_table_kernel<<<num_blocks, block_size>>>(
+      context_,
+      d_queries,
+      d_results,
+      num_queries);
+
+  CHECK_CUDA_ERROR(cudaGetLastError());
+  CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+}
+

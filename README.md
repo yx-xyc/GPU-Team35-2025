@@ -10,7 +10,7 @@ This project implements a complete GPU hash map library with the following featu
 - **Generic design**: Template-based to support various key and value types
 - **Concurrent operations**: Support for mixed insert/delete/search batches
 - **Hybrid search strategy**: Adaptive algorithm that switches between one-warp-per-key and one-thread-per-key based on workload size
-- **Optimized count operations**: Block-level reduction to minimize atomic operations
+- **Optimized count and delte operations**: Block-level reduction to minimize atomic operations
 - **Iterator support**: Sequential traversal of all key-value pairs
 
 Inspired by the SlabHash architecture (Ashkiani et al., IPDPS'18), this implementation adopts the warp-cooperative design philosophy but uses a simplified fixed-size table with linear probing instead of dynamic slab allocation. This design choice makes it efficient for applications with predictable table sizes while being easier to understand and extend.
@@ -54,6 +54,9 @@ Executables will be in `build/bin/`:
 - `test_hybrid_search` - Hybrid search strategy tests
 - `test_iterator` - Iterator functionality tests
 - `test_debug` - Debug utilities
+- `test_insert_performance` - insert performance tests
+- `test_delete_performance` - delete performance tests
+- `test_search_performance` - search performance tests
 
 ## Usage
 
@@ -207,10 +210,13 @@ cd build/bin
 ./test_hash_map_comprehensive      # Comprehensive functionality tests
 ./test_count_comprehensive         # Comprehensive count tests
 ./test_iterator                    # Iterator functionality tests
+./test_hybrid_search               # Hybrid search strategy tests
 
 # Performance tests
 ./test_count_performance           # Count performance benchmarks
-./test_hybrid_search               # Hybrid search strategy tests
+./test_serach_performance          # Search performance test
+./test_insert_performance          # Insert performance test
+./test_delete_performance          # delete performance test
 
 # Debug utilities
 ./test_debug
@@ -241,7 +247,7 @@ The library automatically adapts search strategy based on workload size:
 - **Load factor**: Performance degrades with high load factors (>0.7). Recommended: 0.5-0.6
 - **Hash quality**: Good hash function distribution is critical for performance
 - **Insert protocol**: Three-state protocol with READ-FIRST optimization reduces contention
-- **Count optimization**: Block-level reduction minimizes atomic operations compared to naive implementation
+- **Count and Delete optimization**: Block-level reduction minimizes atomic operations compared to naive implementation
 
 ## Project Structure
 
@@ -274,11 +280,14 @@ GPU-Team35-2025/
     ├── test_utils.cuh                 # Testing utilities
     ├── test_insert.cu                 # Insert tests
     ├── test_delete.cu                 # Delete tests
+    ├── test_delete_performance.cu     # Delete performance tes
     ├── test_count_only.cu             # Count tests
     ├── test_hash_map_comprehensive.cu # Comprehensive tests
     ├── test_count_comprehensive.cu    # Count comprehensive tests
     ├── test_count_performance.cu      # Count benchmarks
     ├── test_hybrid_search.cu          # Hybrid search tests
+    ├── test_search_performance.cu     # Search Perfromance
+    ├── test_insert_performance.cu     # 
     ├── test_iterator.cu               # Iterator tests
     └── test_debug.cu                  # Debug tests
 ```
