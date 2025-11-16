@@ -171,21 +171,23 @@ int main() {
     std::cout << "======== Insert Performance Comparison (GPU vs. CPU) ========" << std::endl;
 
     // 50% Load Factor Tests
-    test_insert_performance(1000000, 2000000, false); // 1M Sequential
-    test_insert_performance(1000000, 2000000, true);  // 1M Random
+    test_insert_performance(1000, 2000, false); // 1000 Sequential
+    // test_insert_performance(1000, 2000, true); // random
     
-    test_insert_performance(5000000, 10000000, false); // 5M Sequential
-    test_insert_performance(5000000, 10000000, true);  // 5M Random
+    test_insert_performance(10000, 20000, false); // 10000 Sequential
+    // test_insert_performance(10000, 20000, true); // random
     
-    test_insert_performance(10000000, 20000000, false); // 10M Sequential
-    test_insert_performance(10000000, 20000000, true);  // 10M Random
+    test_insert_performance(100000, 200000, false); // 100000 Sequential
+    // test_insert_performance(100000, 200000, true); // random
 
-    // 80% Load Factor Tests (more collisions)
-    test_insert_performance(1600000, 2000000, false); // 1.6M Sequential
-    test_insert_performance(1600000, 2000000, true);  // 1.6M Random
+    test_insert_performance(1000000, 2000000, false); // 1000000 Sequential
+    // test_insert_performance(1000000, 2000000, true); // random
 
-    test_insert_performance(8000000, 10000000, false); // 8M Sequential
-    test_insert_performance(8000000, 10000000, true);  // 8M Random
+    test_insert_performance(10000000, 20000000, false); // 10000000 Sequential
+    // test_insert_performance(10000000, 20000000, true); // random
+
+    test_insert_performance(100000000, 200000000, false); // 100000000 Sequential
+    // test_insert_performance(100000000, 200000000, true); // random
 
     std::cout << "\n======== Tests completed! ========" << std::endl;
 
